@@ -55,8 +55,6 @@ class WalletDerive
 
         var_dump($networkCoin); exit;
 
-        Bitcoin::setNetwork($networkCoin);
-
         $network = Bitcoin::getNetwork();
 
         $master = $this->hkf->fromExtended($key, $network);
