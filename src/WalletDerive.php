@@ -53,7 +53,7 @@ class WalletDerive
         $networkCoinFactory = new NetworkCoinFactory();
         $networkCoin = $networkCoinFactory->getNetworkCoinInstance($coin);
 
-        var_dump($networkCoin); exit;
+        Bitcoin::setNetwork($networkCoin);
 
         $network = Bitcoin::getNetwork();
 
