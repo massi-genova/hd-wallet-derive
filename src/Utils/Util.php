@@ -30,7 +30,7 @@ class Util
             'format:', 'cols:',
             'logfile:', 'loglevel:',
             'list-cols',
-            'version', 'help',
+            'version', 'help', 'regtest'
         );
 
         $params = getopt( 'g', $paramsArray);
@@ -92,6 +92,7 @@ class Util
         $params['numderive'] = @$params['numderive'] ?: 10;
         $params['startindex'] = @$params['startindex'] ?: 0;
         $params['includeroot'] = isset($params['includeroot'] );
+        $params['regtest'] = isset($params['regtest'] );
 
         return [$params, $success];
     }

@@ -48,6 +48,12 @@ class WalletDerive
 
         $coin = $params['coin'];
 
+        if($params['regtest'])
+        {
+            $coin = 'btcregtest';
+        }
+
+
         $addrs = array();
 
         $networkCoinFactory = new NetworkCoinFactory();
