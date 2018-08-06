@@ -10,11 +10,18 @@ use BitWasp\Bitcoin\Key\Factory\HierarchicalKeyFactory;
 use BitWasp\Bitcoin\Address\PayToPubKeyHashAddress;
 use Exception;
 use App\Utils\NetworkCoinFactory;
-use App\Utils\MyLogger;
 use App\Utils\CashAddress;
 
 // For Bip39 Mnemonics
 use BitWasp\Bitcoin\Mnemonic\Bip39\Bip39SeedGenerator;
+
+// For ethereum addresses
+use kornrunner\Keccak;
+use BitWasp\Bitcoin\Crypto\EcAdapter\Key\PublicKeyInterface;
+use BitWasp\Bitcoin\Crypto\EcAdapter\Impl\PhpEcc\Serializer\Key\PublicKeySerializer;
+use BitWasp\Bitcoin\Crypto\EcAdapter\EcAdapterFactory;
+use Mdanter\Ecc\Serializer\Point\UncompressedPointSerializer;
+use Mdanter\Ecc\EccFactory;
 
 
 /* A class that implements HD wallet key/address derivation
@@ -32,108 +39,72 @@ class WalletDerive
         $this->hkf = new HierarchicalKeyFactory();
     }
 
-    /* Getter for params
+
+    /**
+     * @return mixed
      */
-    private function get_params()
+    private function getParams()
     {
         return $this->params;
     }
 
     /* Derives child keys/addresses for a given key.
      */
-    public function derive_keys($key)
+    public function deriveKeys($key)
     {
 
-        $params = $this->get_params();
+        $params = $this->getParams();
 
-        $coin = $params['coin'];
+        $coin        = $params['coin'];
+        $regtest     = $params['regtest'];
+        $start       = $params['startindex'];
+        $end         = $params['startindex'] + $params['numderive'];
+        $pathParam   = $params['path'];
 
-        if($params['regtest'])
+        if($regtest)
         {
             $coin = 'btcregtest';
         }
 
-
-        $addrs = array();
-
+        // prepare the network
         $networkCoinFactory = new NetworkCoinFactory();
         $networkCoin = $networkCoinFactory->getNetworkCoinInstance($coin);
-
         Bitcoin::setNetwork($networkCoin);
-
         $network = Bitcoin::getNetwork();
+
 
         $master = $this->hkf->fromExtended($key, $network);
 
-        $start = $params['startindex'];
-        $end = $params['startindex'] + $params['numderive'];
+
 
         $bcashaddress = '';
 
-        /*
-         *  ROOT PATH INCLUSION
-         *
-         *
-         *
-         *
-         *
-         * */
-        if( $params['includeroot'] ) {
-            $ptpkha = new PayToPubKeyHashAddress($master->getPublicKey()->getPubKeyHash());
-            $address = $ptpkha->getAddress();
-            if($coin == 'bcc')
-            {
-                $bcashaddress = CashAddress::old2new($address);
-            }
-            $xprv = $master->isPrivate() ? $master->toExtendedKey($network) : null;
-            $wif = $master->isPrivate() ? $master->getPrivateKey()->toWif($network) : null;
-            $pubkey = $master->getPublicKey()->getHex();
-            $xpub = $master->toExtendedPublicKey($network);
+        $addrs = array();
 
 
-            $addrs[] = array( 'xprv' => $xprv,
-                              'privkey' => $wif,
-                              'pubkey' => $pubkey,
-                              'pubkeyhash' => $pubkey,
-                              'xpub' => $xpub,
-                              'address' => $address,
-                              'bitcoincash' => '',
-                              'index' => null,
-                              'path' => 'm');
-
-            if($coin == 'bcc')
-            {
-                $addrs[] = array( 'xprv' => $xprv,
-                    'privkey' => $wif,
-                    'pubkey' => $pubkey,
-                    'pubkeyhash' => $pubkey,
-                    'xpub' => $xpub,
-                    'address' => $address,
-                    'bitcoincash' => $bcashaddress,
-                    'index' => null,
-                    'path' => 'm');
-
-            }
-        }
-
-
-        MyLogger::getInstance()->log( "Generating addresses", MyLogger::info );
-        $path_base = is_numeric( $params['path']{0} ) ?  'm/' . $params['path'] : $params['path'];
+        $basePath = is_numeric( $pathParam{0} ) ?  'm/' . $pathParam : $pathParam;
         for($i = $start; $i < $end; $i++)
         {
-            if($i && $i % 10 == 0)
-            {
-                MyLogger::getInstance()->log( "Generated $i keys", MyLogger::specialinfo );
-            }
-            $path = $path_base . "/$i";
+
+            $path = $basePath . "/$i";
             $key = $master->derivePath($path);
             
 
-            if(method_exists($key, 'getPublicKey')) {
-                // bip32 path
-                $ptpkha = new PayToPubKeyHashAddress($key->getPublicKey()->getPubKeyHash());
+            if(method_exists($key, 'getPublicKey'))
+            {
 
-                $address = $ptpkha->getAddress();
+                // bip32 path
+                if($coin == 'eth')
+                {
+                    $address = $this->getEthereumAddress($key->getPublicKey());
+                }
+                else
+                {
+                    $ptpkha = new PayToPubKeyHashAddress($key->getPublicKey()->getPubKeyHash());
+                    $address = $ptpkha->getAddress();
+                }
+
+
 
                 if($coin == 'bcc')
                 {
@@ -145,6 +116,8 @@ class WalletDerive
                 $pubkey = $key->getPublicKey()->getHex();
                 $pubkeyhash = $key->getPublicKey()->getPubKeyHash()->getHex();
                 $xpub = $key->toExtendedPublicKey($network);
+
+
             }
             else {
                 throw new Exception("multisig keys not supported");
@@ -195,6 +168,36 @@ class WalletDerive
         return $bip32->toExtendedKey();
     }
 
+    private function getEthereumAddress(PublicKeyInterface $publicKey)
+    {
+        static $pubkey_serializer = null;
+        static $point_serializer = null;
+        if(!$pubkey_serializer){
+            $adapter = EcAdapterFactory::getPhpEcc(Bitcoin::getMath(), Bitcoin::getGenerator());
+            $pubkey_serializer = new PublicKeySerializer($adapter);
+            $point_serializer = new UncompressedPointSerializer(EccFactory::getAdapter());
+        }
+        $pubKey = $pubkey_serializer->parse($publicKey->getBuffer());
+        $point = $pubKey->getPoint();
+        $upk = $point_serializer->serialize($point);
+        $upk = hex2bin(substr($upk, 2));
+        $keccak = Keccak::hash($upk, 256);
+        $eth_address_lower = strtolower(substr($keccak, -40));
+        $hash = Keccak::hash($eth_address_lower, 256);
+        $eth_address = '';
+        for($i = 0; $i < 40; $i++) {
+            // the nth letter should be uppercase if the nth digit of casemap is 1
+            $char = substr($eth_address_lower, $i, 1);
+            if(ctype_digit($char))
+                $eth_address .= $char;
+            else if('0' <= $hash[$i] && $hash[$i] <= '7')
+                $eth_address .= strtolower($char);
+            else
+                $eth_address .= strtoupper($char);
+        }
+        return '0x'. $eth_address;
+    }
+
     /* Returns all columns available for reports
      */
     static public function all_cols()
@@ -216,3 +219,4 @@ class WalletDerive
 //php hd-wallet-derive.php --coin=zec -g --key=xprv9zm6dDUb931Japtf1gMz4bw3CUBoAKULHzW3fRBs7zdmsDfVBZiSDDMYjzQqj3VvBPftNo54JCGoLwMo3nJeGHVDininxzffzpSVBnz2C95 --numderive=5
 //php hd-wallet-derive.php --coin=bcc -g --key=xprv9zcYpBfhcJzPwekgCraUG2KtgKKyQJeCXbHzwV9YjhtzEp1cSZzB9thR3S2ys6MzXuC2oBnW33VdauA1cCMm6pUZc8zHjQVzxCh1Ugt2H8p --numderive=5
 //php hd-wallet-derive.php --key=xprvA1L51gQKdcH9LiV7HBN8MqHLoaNtQqPmhjJy6pLEJUDRRePGcdUpHVqfB2CgdWZUGjviNDA7EAsKmhJRXGQkbX4usEHRV4zhMhAFthJpAEQ --coin=dash --format=json --cols=all --loglevel=fatalerror --numderive=5 --startindex=0 -g
+//php hd-wallet-derive.php --coin=eth -g --key=xprv9zk2L8MQnYwCZc71tr9BC9Ydd93A1bLuNXETuftQ9UMwLPa3fL4NLqgWkRyZLMRK7KurgTghG92kEeNAwojRdmt4CJ2sqEt6V8wovPjoKCr --numderive=5 --all-cols

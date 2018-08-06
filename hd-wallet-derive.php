@@ -41,7 +41,7 @@ function main()
 
         // Key derived from mnemonic if mnemonic is choosen
         $key = @$params['key'] ?: $walletDerive->mnemonicToKey($params['mnemonic'], $params['mnemonic-pw']);
-        $addrs = $walletDerive->derive_keys($key);
+        $addrs = $walletDerive->deriveKeys($key);
 
         // Prints result
         echo "\n";
