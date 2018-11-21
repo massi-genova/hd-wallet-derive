@@ -123,15 +123,7 @@ class WalletDerive
                 throw new Exception("multisig keys not supported");
             }
 
-            $addrs[] = array( 'xprv' => $xprv,
-                'privkey' => $priv_wif,
-                'pubkey' => $pubkey,
-                'pubkeyhash' => $pubkeyhash,
-                'xpub' => $xpub,
-                'address' => $address,
-                'bitcoincash' => '',
-                'index' => $i,
-                'path' => $path);
+
 
             if($coin == 'bcc')
             {
@@ -145,6 +137,18 @@ class WalletDerive
                     'index' => $i,
                     'path' => $path);
 
+            }
+            else
+            {
+                $addrs[] = array( 'xprv' => $xprv,
+                      'privkey' => $priv_wif,
+                      'pubkey' => $pubkey,
+                      'pubkeyhash' => $pubkeyhash,
+                      'xpub' => $xpub,
+                      'address' => $address,
+                      'bitcoincash' => '',
+                      'index' => $i,
+                      'path' => $path);
             }
         }
 
